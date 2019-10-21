@@ -1,0 +1,19 @@
+server_uri: ${boltURI}
+admin_user: neo4j
+admin_pass: neo4j
+
+files:
+  - url: s3://ps-test-resources/a.csv
+    cql: |
+      WITH $dict.rows as rows UNWIND rows as row
+          MERGE (a:ALabel {p1: row.p1, p2: row.p2, p3: row.p3})
+  - url: s3://ps-test-resources/b.csv.gz
+    compression: gzip
+    cql: |
+      WITH $dict.rows as rows UNWIND rows as row
+        MERGE (b:BLabel {p1: row.p1, p2: row.p2, p3: row.p3})
+  - url: s3://ps-test-resources/c.csv.zip
+    compression: zip
+    cql: |
+      WITH $dict.rows as rows UNWIND rows as row
+        MERGE (c:CLabel {p1: row.p1, p2: row.p2, p3: row.p3})

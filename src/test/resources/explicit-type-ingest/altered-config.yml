@@ -1,0 +1,19 @@
+server_uri: bolt://127.0.0.1:40139/
+admin_user: neo4j
+admin_pass: neo4j
+
+files:
+  - url: file:///home/matt/projects/pyingest/src/test/resources/csv.json
+    type: csv
+    cql: |
+      WITH $dict.rows as rows UNWIND rows as row
+          MERGE (a:ALabel {p1: row.p1, p2: row.p2, p3: row.p3})
+  - url: file:///home/matt/projects/pyingest/src/test/resources/json.csv
+    type: json
+    cql: |
+      WITH $dict.rows as rows UNWIND rows as row
+        MERGE (b:BLabel {p1: row.p1, p2: row.p2, p3: row.p3})
+  - url: file:///home/matt/projects/pyingest/src/test/resources/c
+    cql: |
+      WITH $dict.rows as rows UNWIND rows as row
+        MERGE (c:CLabel {p1: row.p1, p2: row.p2, p3: row.p3})

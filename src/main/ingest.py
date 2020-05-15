@@ -94,6 +94,8 @@ class LocalServer(object):
                 rows_dict = {'rows': rows}
                 session.run(statement=params['cql'], dict=rows_dict).consume()
 
+        print("{} : Completed file", datetime.datetime.utcnow())
+
     @staticmethod
     def get_params(file):
         params = dict()

@@ -1,4 +1,4 @@
-server_uri: bolt://127.0.0.1:39351/
+server_uri: bolt://127.0.0.1:35397/
 admin_user: neo4j
 admin_pass: neo4j
 

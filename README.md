@@ -6,7 +6,7 @@ A script for loading CSV and JSON files into a Neo4j database written in Python3
 
 ## Installation
 * You will need to have Python 3 and compatible version of Pip installed.
-* Then run `pip3 -r requirements.txt` to obtain dependencies
+* Then run `pip3 install -r requirements.txt` to obtain dependencies
 
 ## Usage
 `python3 ingest.py <config>`

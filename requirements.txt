@@ -1,5 +1,5 @@
 ijson>=3.0.4
 smart_open>=2.0.0
 boto3>=1.13.7
-neo4j>=1.7.6
+neo4j==1.7.6
 pandas>=1.0.3

@@ -86,13 +86,13 @@ class LocalServer(object):
                             print(file['url'], chunk_num, datetime.datetime.utcnow(), flush=True)
                             chunk_num = chunk_num + 1
                             rows_dict = {'rows': rows}
-                            session.run(statement=params['cql'], dict=rows_dict).consume()
+                            session.run(params['cql'], dict=rows_dict).consume()
                             rows = []
 
             if len(rows) > 0:
                 print(file['url'], chunk_num, datetime.datetime.utcnow(), flush=True)
                 rows_dict = {'rows': rows}
-                session.run(statement=params['cql'], dict=rows_dict).consume()
+                session.run(params['cql'], dict=rows_dict).consume()
 
         print("{} : Completed file", datetime.datetime.utcnow())
 
@@ -136,7 +136,7 @@ class LocalServer(object):
                 print(params['url'], i, datetime.datetime.utcnow(), flush=True)
                 # Chunk up the rows to enable additional fastness :-)
                 rows_dict = {'rows': rows.fillna(value="").to_dict('records')}
-                session.run(statement=params['cql'],
+                session.run(params['cql'],
                             dict=rows_dict).consume()
 
         print("{} : Completed file", datetime.datetime.utcnow())
@@ -147,7 +147,7 @@ class LocalServer(object):
 
             with self._driver.session() as session:
                 for statement in statements:
-                    session.run(statement=statement)
+                    session.run(statement)
 
     def post_ingest(self):
         if 'post_ingest' in config:
@@ -155,7 +155,7 @@ class LocalServer(object):
 
             with self._driver.session() as session:
                 for statement in statements:
-                    session.run(statement=statement)
+                    session.run(statement)
 
 
 def file_handle(url, compression):

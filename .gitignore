@@ -3,3 +3,4 @@ build
 .gradle
 gradle
 exportToHTML
+altered-config.yml

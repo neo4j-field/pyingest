@@ -162,8 +162,10 @@ def file_handle(url, compression):
     parsed = urlparse(url)
     if parsed.scheme == 's3':
         path = get_s3_client().get_object(Bucket=parsed.netloc, Key=parsed.path[1:])['Body']
-    else:
+    elif parsed.scheme == 'file':
         path = parsed.path
+    else:
+        path = url
     if compression == 'gzip':
         return gzip.open(path, 'rt')
     elif compression == 'zip':

@@ -11,6 +11,7 @@ from smart_open import open
 import io
 import pathlib
 import ijson
+import pyarrow
 
 config = dict()
 supported_compression_formats = ['gzip', 'zip', 'none']
@@ -21,7 +22,7 @@ class LocalServer(object):
     def __init__(self):
         self._driver = GraphDatabase.driver(config['server_uri'],
                                             auth=(config['admin_user'],
-                                                  config['admin_pass']))
+                                                  config['admin_pass']), encrypted=False)
 
     def close(self):
         self._driver.close()
@@ -43,6 +44,8 @@ class LocalServer(object):
                 self.load_csv(file)
             elif type == 'json':
                 self.load_json(file)
+            elif type == 'parquet':
+                self.load_parquet(file)
             else:
                 print("Error! Can't process file because unknown type", type, "was specified")
         else:
@@ -51,6 +54,8 @@ class LocalServer(object):
                 self.load_csv(file)
             elif '.json' in file_suffixes:
                 self.load_json(file)
+            elif '.parquet' in file_suffixes:
+                self.load_parquet(file)
             else:
                 self.load_csv(file)
 
@@ -138,6 +143,42 @@ class LocalServer(object):
                 rows_dict = {'rows': rows.fillna(value="").to_dict('records')}
                 session.run(params['cql'],
                             dict=rows_dict).consume()
+
+        print("{} : Completed file", datetime.datetime.utcnow())
+
+    def load_parquet(self, file):
+        with self._driver.session() as session:
+            params = self.get_params(file)
+            chunksize = params['chunk_size']
+            skiprows = params['skip_records']
+
+            df = pd.read_parquet(file['url'])
+            iter = df.iterrows()
+            totalRows = 0
+            batchRows = 0
+            chunk = []
+            while True:
+                try:
+                    row = next(iter)
+                    totalRows += 1
+                    if totalRows > skiprows:
+                        # Row content is the second part of the tuple
+                        content = row[1]
+                        content = content.fillna(value="")
+                        content_dict = content.to_dict()
+                        chunk.append(content_dict)
+                        batchRows += 1
+                        if batchRows == chunksize:
+                            print(params['url'], int(totalRows/chunksize), datetime.datetime.utcnow(), flush=True)
+                            session.run(params['cql'], rows=chunk).consume()
+                            chunk = []
+                            batchRows =0
+
+                except StopIteration:
+                    break
+
+            if len(chunk) > 0:
+                session.run(params['cql'], rows=chunk).consume()
 
         print("{} : Completed file", datetime.datetime.utcnow())
 

@@ -1,0 +1,16 @@
+server_uri: bolt://localhost:7687/
+admin_user: neo4j
+admin_pass: test
+files:
+  - url: file:///home/matt/projects/pyingest/src/main/resources/pems_sorted/station=402260
+    type: parquet
+    cql: |
+      WITH $rows as rows UNWIND rows as row
+      MERGE (a:Thing {id: row.timeperiod})
+      SET a.flow = toInt(row.flow1),
+          a.speed = toFloat(row.speed1),
+          a.occupancy = toFloat(row.occupancy1)
+
+pre_ingest:
+  - CALL apoc.periodic.iterate("MATCH (n) return n", "DETACH DELETE n", {batchSize:1000})
+  - CREATE INDEX ON :Thing(id)

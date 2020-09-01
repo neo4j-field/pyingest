@@ -12,6 +12,7 @@ import io
 import pathlib
 import ijson
 import pyarrow
+import awswrangler as wr
 
 config = dict()
 supported_compression_formats = ['gzip', 'zip', 'none']
@@ -84,7 +85,7 @@ class LocalServer(object):
                 if row is None:
                     halt = True
                 else:
-                    rec_num = rec_num+1;
+                    rec_num = rec_num + 1;
                     if rec_num > params['skip_records']:
                         rows.append(row)
                         if len(rows) == params['chunk_size']:
@@ -114,6 +115,15 @@ class LocalServer(object):
         params['cql'] = file['cql']
         params['chunk_size'] = file.get('chunk_size') or 1000
         params['field_sep'] = file.get('field_separator') or ','
+
+        params['parquet_suffix_whitelist'] = file.get('parquet_suffix_whitelist') or None
+        params['parquet_suffix_blacklist'] = file.get('parquet_suffix_blacklist') or None
+        params['parquet_partition_filter'] = file.get('parquet_partition_filter') or None
+        params['parquet_columns'] = file.get('parquet_columns') or None
+        params['parquet_start_from_mod_date'] = file.get('parquet_start_from_mod_date') or None
+        params['parquet_up_to_mod_date'] = file.get('parquet_up_to_mod_date') or None
+        params['parquet_s3_additional_args'] = file.get('parquet_s3_additional_args') or None
+        params['parquet_as_dataset'] = file.get('parquet_as_dataset') or False
         return params
 
     def load_csv(self, file):
@@ -151,33 +161,70 @@ class LocalServer(object):
             params = self.get_params(file)
             chunksize = params['chunk_size']
             skiprows = params['skip_records']
+            path_suffix = params['parquet_suffix_whitelist']
+            path_ignore_suffix = params['parquet_suffix_blacklist']
+            partition_filter = params['parquet_partition_filter']
+            columns = params['parquet_columns']
+            last_modified_begin = params['parquet_start_from_mod_date']
+            last_modified_end = params['parquet_up_to_mod_date']
+            s3_additional_kwargs = params['parquet_s3_additional_args']
+            dataset = params['parquet_as_dataset']
 
-            df = pd.read_parquet(file['url'])
-            iter = df.iterrows()
-            totalRows = 0
+            filter = None
+            if partition_filter is not None:
+                exec(partition_filter)
+                filter = getattr(self, 'filter')
+
+            collist =None
+            if columns is not None :
+                collist = []
+                colsplit = columns.split(',')
+                for x in colsplit:
+                    collist.append(x.strip())
+                print(collist)
+
+            start_date = None
+            if last_modified_begin is not None:
+                start_date = datetime.datetime.strptime(last_modified_begin, "%m/%d/%y %H:%M:%S%z")
+
+            end_date = None
+            if last_modified_end is not None:
+                end_date = datetime.datetime.strptime(last_modified_end, "%m/%d/%y %H:%M:%S%z")
+
+            addl_args = None
+            if s3_additional_kwargs is not None:
+                addl_args = {}
+                entries = s3_additional_kwargs.split(',')
+                for e in entries:
+                    kv = e.strip().split(':')
+                    addl_args[kv[0]] = kv[1]
+
+            print(addl_args)
+
+
+            dfs = wr.s3.read_parquet(path=file['url'], chunked=chunksize, path_suffix=path_suffix,
+                                     path_ignore_suffix=path_ignore_suffix, partition_filter=filter,
+                                     columns=collist, last_modified_begin=start_date,
+                                     last_modified_end=end_date, s3_additional_kwargs=addl_args,
+                                     dataset=dataset)
             batchRows = 0
-            chunk = []
-            while True:
-                try:
-                    row = next(iter)
-                    totalRows += 1
-                    if totalRows > skiprows:
-                        # Row content is the second part of the tuple
-                        content = row[1]
-                        content = content.fillna(value="")
-                        content_dict = content.to_dict()
-                        chunk.append(content_dict)
-                        batchRows += 1
-                        if batchRows == chunksize:
-                            print(params['url'], int(totalRows/chunksize), datetime.datetime.utcnow(), flush=True)
-                            session.run(params['cql'], rows=chunk).consume()
-                            chunk = []
-                            batchRows =0
-
-                except StopIteration:
-                    break
-
-            if len(chunk) > 0:
+            totalRows = 0
+            for df in dfs:
+                batchRows += 1
+                print(params['url'], batchRows, datetime.datetime.utcnow(), flush=True)
+                iter = df.iterrows()
+                chunk = []
+                while True:
+                    try:
+                        row = next(iter)
+                        totalRows += 1
+                        if totalRows > skiprows:
+                            content = row[1]
+                            content = content.fillna(value="")
+                            content_dict = content.to_dict()
+                            chunk.append(content_dict)
+                    except StopIteration:
+                        break
                 session.run(params['cql'], rows=chunk).consume()
 
         print("{} : Completed file", datetime.datetime.utcnow())
@@ -216,7 +263,7 @@ def file_handle(url, compression):
         else:
             buffer = io.BytesIO(path.read())
         zf = ZipFile(buffer)
-        filename= zf.infolist()[0].filename
+        filename = zf.infolist()[0].filename
         return zf.open(filename)
     else:
         return open(path)

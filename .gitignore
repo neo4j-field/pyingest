@@ -4,3 +4,5 @@ build
 gradle
 exportToHTML
 altered-config.yml
+pems_sorted
+*.zip

@@ -2,15 +2,18 @@ server_uri: bolt://localhost:7687/
 admin_user: neo4j
 admin_pass: test
 files:
-  - url: file:///home/matt/projects/pyingest/src/main/resources/pems_sorted/station=402260
+  - url: s3://pyingest-parquet-test/pems_sorted/
     type: parquet
+    parquet_suffix_whitelist: '.parquet'
+    parquet_up_to_mod_date: '9/30/20 00:00:00+0000'
+    parquet_s3_additional_args: "ServerSideEncryption:aws:kms,SSEKMSKeyId: YOUR_KMY_KEY_ARN"
     cql: |
       WITH $rows as rows UNWIND rows as row
       MERGE (a:Thing {id: row.timeperiod})
-      SET a.flow = toInt(row.flow1),
+      SET a.flow = toInteger(row.flow1),
           a.speed = toFloat(row.speed1),
           a.occupancy = toFloat(row.occupancy1)
 
 pre_ingest:
   - CALL apoc.periodic.iterate("MATCH (n) return n", "DETACH DELETE n", {batchSize:1000})
-  - CREATE INDEX ON :Thing(id)
+  - CALL apoc.schema.assert({Thing:['id']}, null)

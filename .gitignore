@@ -1,6 +1,5 @@
 build
 .idea
 .gradle
-gradle
 exportToHTML
 altered-config.yml

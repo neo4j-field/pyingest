@@ -2,10 +2,7 @@ package org.mholford.pyingest;
 
 import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang.text.StrSubstitutor;
-import org.junit.After;
-import org.junit.Before;
-import org.junit.Rule;
-import org.junit.Test;
+import org.junit.*;
 import org.neo4j.driver.v1.*;
 import org.neo4j.harness.ServerControls;
 import org.neo4j.harness.internal.EnterpriseInProcessServerBuilder;
@@ -36,15 +33,15 @@ import static org.junit.Assert.fail;
  * </ul>
  */
 public class IngestPyIT {
-  private ServerControls server;
-  private Driver driver;
-  private final AuthToken BASIC_AUTH = AuthTokens.basic("neo4j", "neo4j");
+  private static ServerControls server;
+  private static Driver driver;
+  private static final AuthToken BASIC_AUTH = AuthTokens.basic("neo4j", "neo4j");
 
-  @Rule
-  public final TestDirectory testDirectory = TestDirectory.testDirectory();
+  @ClassRule
+  public static final TestDirectory testDirectory = TestDirectory.testDirectory();
 
-  @Before
-  public void setup() {
+  @BeforeClass
+  public static void setup() {
     File directory = testDirectory.directory();
     server = new EnterpriseInProcessServerBuilder(directory).newServer();
     driver = GraphDatabase.driver(server.boltURI(), BASIC_AUTH);
@@ -316,8 +313,55 @@ public class IngestPyIT {
     }
   }
 
+  @Test
+  public void testRegularIngestParquet() {
+    String folder = "parquet-regular";
+    try {
+      rewriteConfig(folder);
+      runPythonIngest(folder);
+      checkResults("ALabel", "a", 10, 0);
+    } catch (Exception e) {
+      e.printStackTrace();
+      fail();
+    }
+  }
+
+  @Test
+  public void testS3Parquet() {
+    String folder = "parquet-s3";
+    try {
+      rewriteConfig(folder);
+      runPythonIngest(folder);
+      checkResults("ALabel", "a", 10, 0);
+    } catch (Exception e) {
+      e.printStackTrace();
+      fail();
+    }
+  }
+
+  @Test
+  public void testParquetSkip() {
+    String folder = "parquet-skip";
+    try {
+      rewriteConfig(folder);
+      runPythonIngest(folder);
+      checkResults("ALabel", "a", 7, 3);
+    } catch (Exception e) {
+      e.printStackTrace();
+      fail();
+    }
+  }
+
   @After
-  public void tearDown() {
+  public void clearGraph() {
+    Session session = driver.session();
+    String q = "MATCH (x) DETACH DELETE x";
+    session.run(q).consume();
+    session.close();
+  }
+
+  @AfterClass
+  public static void tearDown() {
     server.close();
   }
 
@@ -332,6 +376,7 @@ public class IngestPyIT {
         assertEquals(fmt("%s%d%d", prefix, start+i, j), rec.get("x").get(fmt("p%d", j+1)).asString());
       }
     }
+    session.close();
   }
 
   private String runPythonIngest(String folder) throws IOException, InterruptedException {

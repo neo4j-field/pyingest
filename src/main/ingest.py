@@ -85,7 +85,7 @@ class LocalServer(object):
                 if row is None:
                     halt = True
                 else:
-                    rec_num = rec_num + 1;
+                    rec_num = rec_num + 1
                     if rec_num > params['skip_records']:
                         rows.append(row)
                         if len(rows) == params['chunk_size']:
@@ -159,6 +159,7 @@ class LocalServer(object):
     def load_parquet(self, file):
         with self._driver.session() as session:
             params = self.get_params(file)
+            path = file['url']
             chunksize = params['chunk_size']
             skiprows = params['skip_records']
             path_suffix = params['parquet_suffix_whitelist']
@@ -201,15 +202,19 @@ class LocalServer(object):
 
             print(addl_args)
 
-
-            dfs = wr.s3.read_parquet(path=file['url'], chunked=chunksize, path_suffix=path_suffix,
+            if path.upper().startswith('S3') :
+                dfs = wr.s3.read_parquet(path=path, chunked=chunksize, path_suffix=path_suffix,
                                      path_ignore_suffix=path_ignore_suffix, partition_filter=filter,
                                      columns=collist, last_modified_begin=start_date,
                                      last_modified_end=end_date, s3_additional_kwargs=addl_args,
                                      dataset=dataset)
+            else:
+                dfs = [pd.read_parquet(path)]
+
             batchRows = 0
             totalRows = 0
             for df in dfs:
+
                 batchRows += 1
                 print(params['url'], batchRows, datetime.datetime.utcnow(), flush=True)
                 iter = df.iterrows()
@@ -217,15 +222,19 @@ class LocalServer(object):
                 while True:
                     try:
                         row = next(iter)
+                        print(row)
                         totalRows += 1
                         if totalRows > skiprows:
                             content = row[1]
                             content = content.fillna(value="")
                             content_dict = content.to_dict()
                             chunk.append(content_dict)
+
                     except StopIteration:
                         break
-                session.run(params['cql'], rows=chunk).consume()
+                dict = {'rows':chunk}
+                print(dict)
+                session.run(params['cql'], dict=dict).consume()
 
         print("{} : Completed file", datetime.datetime.utcnow())
 
@@ -276,7 +285,7 @@ def get_s3_client():
 def load_config(configuration):
     global config
     with open(configuration) as config_file:
-        config = yaml.load(config_file)
+        config = yaml.SafeLoader(config_file).get_data()
 
 
 def main():

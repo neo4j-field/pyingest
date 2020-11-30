@@ -5,3 +5,4 @@ exportToHTML
 altered-config.yml
 pems_sorted
 *.zip
+*.parquet

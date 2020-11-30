@@ -1,0 +1,11 @@
+server_uri: ${boltURI}
+admin_user: neo4j
+admin_pass: neo4j
+
+files:
+  - url: file://${testResourceDir}/parquet
+    type: parquet
+    skip_records: 3
+    cql: |
+      WITH $dict.rows as rows UNWIND rows as row
+          MERGE (a:ALabel {p1: row.p1, p2: row.p2, p3: row.p3})

@@ -3,3 +3,6 @@ build
 .gradle
 exportToHTML
 altered-config.yml
+pems_parquet.zip
+*.parquet
+pems_sorted

@@ -19,6 +19,7 @@ supported_compression_formats = ['gzip', 'zip', 'none']
 class LocalServer(object):
 
     def __init__(self):
+        self.database = config['database']
         self._driver = GraphDatabase.driver(config['server_uri'],
                                             auth=(config['admin_user'],
                                                   config['admin_pass']))
@@ -64,7 +65,7 @@ class LocalServer(object):
             yield prefix, event, value
 
     def load_json(self, file):
-        with self._driver.session() as session:
+        with self._driver.session(database=self.database) as session:
             params = self.get_params(file)
             openfile = file_handle(params['url'], params['compression'])
             # 'item' is a magic word in ijson.  It just means the next-level element of an array
@@ -112,7 +113,7 @@ class LocalServer(object):
         return params
 
     def load_csv(self, file):
-        with self._driver.session() as session:
+        with self._driver.session(database=self.database) as session:
             params = self.get_params(file)
             openfile = file_handle(params['url'], params['compression'])
 
@@ -145,7 +146,7 @@ class LocalServer(object):
         if 'pre_ingest' in config:
             statements = config['pre_ingest']
 
-            with self._driver.session() as session:
+            with self._driver.session(database=self.database) as session:
                 for statement in statements:
                     session.run(statement)
 
@@ -153,7 +154,7 @@ class LocalServer(object):
         if 'post_ingest' in config:
             statements = config['post_ingest']
 
-            with self._driver.session() as session:
+            with self._driver.session(database=self.database) as session:
                 for statement in statements:
                     session.run(statement)
 
@@ -188,18 +189,18 @@ def get_s3_client():
 def load_config(configuration):
     global config
     with open(configuration) as config_file:
-        config = yaml.load(config_file)
+        config = yaml.load(config_file,yaml.SafeLoader)
 
 
 def main():
     configuration = sys.argv[1]
     load_config(configuration)
     server = LocalServer()
-    server.pre_ingest()
-    file_list = config['files']
-    for file in file_list:
-        server.load_file(file)
-    server.post_ingest()
+    #server.pre_ingest()
+    #file_list = config['files']
+    #for file in file_list:
+    #    server.load_file(file)
+    #server.post_ingest()
     server.close()
 
 

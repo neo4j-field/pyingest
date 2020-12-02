@@ -13,8 +13,8 @@ repositories {
 
 dependencies {
     testCompile group: 'junit', name: 'junit', version: '4.12'
-    testCompile 'org.neo4j.test:neo4j-harness-enterprise:+'
+    testCompile 'org.neo4j.test:neo4j-harness:+'
     testCompile 'org.apache.commons:commons-text:1.1'
     testCompile group: 'commons-io', name: 'commons-io', version: '2.6'
-    testCompile 'org.neo4j.driver:neo4j-java-driver:1.7.5'
+    testCompile 'org.neo4j.driver:neo4j-java-driver:4.2.0'
 }

@@ -1,14 +1,14 @@
 package org.mholford.pyingest;
 
 import org.apache.commons.io.IOUtils;
-import org.apache.commons.lang.text.StrSubstitutor;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
-import org.neo4j.driver.v1.*;
-import org.neo4j.harness.ServerControls;
-import org.neo4j.harness.internal.EnterpriseInProcessServerBuilder;
+import org.neo4j.driver.*;
+import org.neo4j.harness.Neo4j;
+import org.neo4j.harness.Neo4jBuilders;
+import org.neo4j.logging.shaded.log4j.core.lookup.StrSubstitutor;
 import org.neo4j.test.rule.TestDirectory;
 
 import java.io.*;
@@ -36,7 +36,7 @@ import static org.junit.Assert.fail;
  * </ul>
  */
 public class IngestPyIT {
-  private ServerControls server;
+  private Neo4j server;
   private Driver driver;
   private final AuthToken BASIC_AUTH = AuthTokens.basic("neo4j", "neo4j");
 
@@ -45,8 +45,8 @@ public class IngestPyIT {
 
   @Before
   public void setup() {
-    File directory = testDirectory.directory();
-    server = new EnterpriseInProcessServerBuilder(directory).newServer();
+    //File directory = testDirectory.directory();
+    server = Neo4jBuilders.newInProcessBuilder().build();
     driver = GraphDatabase.driver(server.boltURI(), BASIC_AUTH);
   }
 

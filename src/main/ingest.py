@@ -14,12 +14,13 @@ import ijson
 
 config = dict()
 supported_compression_formats = ['gzip', 'zip', 'none']
-
+default_database = 'neo4j'
+default_chuck_size = 1000
 
 class LocalServer(object):
 
     def __init__(self):
-        self.database = config['database']
+        self.database = config['database'] or default_database
         self._driver = GraphDatabase.driver(config['server_uri'],
                                             auth=(config['admin_user'],
                                                   config['admin_pass']))
@@ -108,7 +109,7 @@ class LocalServer(object):
         params['url'] = file['url']
         print("File {}", params['url'])
         params['cql'] = file['cql']
-        params['chunk_size'] = file.get('chunk_size') or 1000
+        params['chunk_size'] = file.get('chunk_size') or default_chuck_size
         params['field_sep'] = file.get('field_separator') or ','
         return params
 

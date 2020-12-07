@@ -11,16 +11,29 @@ from smart_open import open
 import io
 import pathlib
 import ijson
+import logging
+
+logging.root.handlers = []
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    handlers=[
+        logging.FileHandler("debug.log"),
+        logging.StreamHandler(sys.stdout)
+    ]
+)
 
 config = dict()
 supported_compression_formats = ['gzip', 'zip', 'none']
 default_database = 'neo4j'
 default_chuck_size = 1000
+default_skip_file = False
 
 class LocalServer(object):
 
     def __init__(self):
         self.database = config['database'] or default_database
+        logging.info('Attempting to connect to {} database'.format(self.database)) 
         self._driver = GraphDatabase.driver(config['server_uri'],
                                             auth=(config['admin_user'],
                                                   config['admin_pass']))
@@ -31,12 +44,12 @@ class LocalServer(object):
     def load_file(self, file):
         # Set up parameters/defaults
         # Check skip_file first so we can exit early
-        skip = file.get('skip_file') or False
+        skip = file.get('skip_file') or default_skip_file
         if skip:
-            print("Skipping this file: {}", file['url'])
+            logging.info("Skipping this file: {}", file['url'])
             return
 
-        print("{} : Reading file", datetime.datetime.utcnow())
+        logging.info("{} : Reading file", datetime.datetime.utcnow())
 
         # If file type is specified, use that.  Else check the extension.  Else, treat as csv
         type = file.get('type') or 'NA'
@@ -46,7 +59,7 @@ class LocalServer(object):
             elif type == 'json':
                 self.load_json(file)
             else:
-                print("Error! Can't process file because unknown type", type, "was specified")
+                logging.info("Error! Can't process file because unknown type", type, "was specified")
         else:
             file_suffixes = pathlib.Path(file['url']).suffixes
             if '.csv' in file_suffixes:
@@ -85,18 +98,18 @@ class LocalServer(object):
                     if rec_num > params['skip_records']:
                         rows.append(row)
                         if len(rows) == params['chunk_size']:
-                            print(file['url'], chunk_num, datetime.datetime.utcnow(), flush=True)
+                            logging.info(file['url'], chunk_num, datetime.datetime.utcnow(), flush=True)
                             chunk_num = chunk_num + 1
                             rows_dict = {'rows': rows}
                             session.run(params['cql'], dict=rows_dict).consume()
                             rows = []
 
             if len(rows) > 0:
-                print(file['url'], chunk_num, datetime.datetime.utcnow(), flush=True)
+                logging.info(file['url'], chunk_num, datetime.datetime.utcnow(), flush=True)
                 rows_dict = {'rows': rows}
                 session.run(params['cql'], dict=rows_dict).consume()
 
-        print("{} : Completed file", datetime.datetime.utcnow())
+        logging.info("{} : Completed file", datetime.datetime.utcnow())
 
     @staticmethod
     def get_params(file):
@@ -104,10 +117,10 @@ class LocalServer(object):
         params['skip_records'] = file.get('skip_records') or 0
         params['compression'] = file.get('compression') or 'none'
         if params['compression'] not in supported_compression_formats:
-            print("Unsupported compression format: {}", params['compression'])
+            logging.info("Unsupported compression format: {}", params['compression'])
 
         params['url'] = file['url']
-        print("File {}", params['url'])
+        logging.info("File {}", params['url'])
         params['cql'] = file['cql']
         params['chunk_size'] = file.get('chunk_size') or default_chuck_size
         params['field_sep'] = file.get('field_separator') or ','
@@ -135,13 +148,13 @@ class LocalServer(object):
                                      chunksize=params['chunk_size'])
 
             for i, rows in enumerate(row_chunks):
-                print(params['url'], i, datetime.datetime.utcnow(), flush=True)
+                logging.info(params['url'], i, datetime.datetime.utcnow(), flush=True)
                 # Chunk up the rows to enable additional fastness :-)
                 rows_dict = {'rows': rows.fillna(value="").to_dict('records')}
                 session.run(params['cql'],
                             dict=rows_dict).consume()
 
-        print("{} : Completed file", datetime.datetime.utcnow())
+        logging.info("{} : Completed file", datetime.datetime.utcnow())
 
     def pre_ingest(self):
         if 'pre_ingest' in config:
@@ -194,14 +207,18 @@ def load_config(configuration):
 
 
 def main():
-    configuration = sys.argv[1]
+    try:
+        configuration = sys.argv[1]
+    except IndexError:
+        logging.error('Configuration file not provided (Usage: python ingest.py [config_file_location])')
+        sys.exit(1)
     load_config(configuration)
     server = LocalServer()
-    #server.pre_ingest()
-    #file_list = config['files']
-    #for file in file_list:
-    #    server.load_file(file)
-    #server.post_ingest()
+    server.pre_ingest()
+    file_list = config['files']
+    for file in file_list:
+        server.load_file(file)
+    server.post_ingest()
     server.close()
 
 

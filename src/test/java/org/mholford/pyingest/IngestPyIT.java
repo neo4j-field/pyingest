@@ -1,5 +1,9 @@
 package org.mholford.pyingest;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
+import com.google.common.base.Strings;
+import com.neo4j.harness.EnterpriseNeo4jBuilders;
 import org.apache.commons.io.IOUtils;
 import org.junit.After;
 import org.junit.Before;
@@ -46,14 +50,25 @@ public class IngestPyIT {
   @Before
   public void setup() {
     //File directory = testDirectory.directory();
-    server = Neo4jBuilders.newInProcessBuilder().build();
+    server = EnterpriseNeo4jBuilders.newInProcessBuilder().build();
     driver = GraphDatabase.driver(server.boltURI(), BASIC_AUTH);
   }
 
   @Test
   public void testMultiDb() {
     var folder = "multi-db";
-
+    try {
+      var dbName = findDatabase(folder);
+      createTestDatabase(dbName);
+      rewriteConfig(folder);
+      runPythonIngest(folder);
+      checkResults("ALabel", "a", 10, 0, dbName);
+      checkResults("BLabel", "b", 10, 0, dbName);
+      checkResults("CLabel", "c", 10, 0, dbName);
+    } catch (Exception e) {
+      e.printStackTrace();
+      fail();
+    }
   }
 
   @Test
@@ -328,7 +343,23 @@ public class IngestPyIT {
   }
 
   private void checkResults(String label, String prefix, int numRecs, int start) {
-    Session session = driver.session();
+    checkResults(label, prefix, numRecs, start, null);
+  }
+
+  private void createTestDatabase(String dbName) {
+    var dms = server.databaseManagementService();
+    dms.createDatabase(dbName);
+    dms.startDatabase(dbName);
+  }
+
+  private void checkResults(String label, String prefix, int numRecs, int start, String database) {
+    Session session;
+    if (!Strings.isNullOrEmpty(database)) {
+      SessionConfig scon = SessionConfig.builder().withDatabase(database).build();
+      session = driver.session(scon);
+    } else {
+      session = driver.session();
+    }
     String q = fmt("MATCH (x:%s) return x order by x.p1", label);
     List<Record> results = session.run(q).list();
     assertEquals(numRecs, results.size());
@@ -380,6 +411,15 @@ public class IngestPyIT {
     config = new StrSubstitutor(subs).replace(config);
     Files.write(Path.of(fmt("%s/src/test/resources/%s/altered-config.yml", userDir, folder)),
             config.getBytes());
+  }
+
+  private String findDatabase(String folder) throws IOException {
+    String userDir = System.getProperty("user.dir");
+    File config = new File(fmt("%s/src/test/resources/%s/config.yml", userDir, folder));
+    ObjectMapper om = new ObjectMapper(new YAMLFactory());
+    var m = om.readValue(config, Map.class);
+    var db = m.get("database").toString();
+    return db;
   }
 
   private String fileToString(String path) throws IOException {

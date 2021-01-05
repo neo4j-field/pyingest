@@ -1,20 +1,31 @@
 plugins {
     id 'java'
+    id 'net.linguica.maven-settings' version '0.5'
 }
 
 group 'org.mholford'
 version '1.0-SNAPSHOT'
 
-sourceCompatibility = 1.8
+sourceCompatibility = 11
 
 repositories {
     mavenCentral()
+    maven {
+        name = "neo4j-enterprise"
+        url= "https://neo4j.bintray.com/enterprise"
+    }
 }
 
 dependencies {
     testCompile group: 'junit', name: 'junit', version: '4.12'
-    testCompile 'org.neo4j.test:neo4j-harness:+'
+    testCompile 'com.neo4j.test:neo4j-harness-enterprise:4.2.1'
     testCompile 'org.apache.commons:commons-text:1.1'
     testCompile group: 'commons-io', name: 'commons-io', version: '2.6'
-    testCompile 'org.neo4j.driver:neo4j-java-driver:4.2.0'
+    testCompile 'org.neo4j.driver:neo4j-java-driver:+'
+    testCompile 'com.google.guava:guava:+'
+    testCompile 'com.fasterxml.jackson.core:jackson-core:+'
+    testCompile 'com.fasterxml.jackson.dataformat:jackson-dataformat-yaml:+'
+    testCompile 'com.neo4j:neo4j-enterprise:4.2.1'
 }
+
+

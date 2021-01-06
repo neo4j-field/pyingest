@@ -72,6 +72,21 @@ public class IngestPyIT {
   }
 
   @Test
+  public void testBasepath() {
+    var folder = "basepath";
+    try {
+      rewriteConfig(folder);
+      runPythonIngest(folder);
+      checkResults("ALabel", "a", 10, 0);
+      checkResults("BLabel", "b", 10, 0);
+      checkResults("CLabel", "c", 10, 0);
+    } catch (Exception e) {
+      e.printStackTrace();
+      fail();
+    }
+  }
+
+  @Test
   public void testRegularIngestCSV() {
     String folder = "plain-ingest-csv";
     try {

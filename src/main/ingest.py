@@ -26,6 +26,7 @@ class LocalServer(object):
         self.database = config['database'] if 'database' in config else None
         if self.database is not None:
             self.db_config['database'] = self.database
+        self.basepath = config['basepath'] if 'basepath' in config else None
 
     def close(self):
         self._driver.close()
@@ -100,15 +101,17 @@ class LocalServer(object):
 
         print("{} : Completed file", datetime.datetime.utcnow())
 
-    @staticmethod
-    def get_params(file):
+    def get_params(self, file):
         params = dict()
         params['skip_records'] = file.get('skip_records') or 0
         params['compression'] = file.get('compression') or 'none'
         if params['compression'] not in supported_compression_formats:
             print("Unsupported compression format: {}", params['compression'])
 
-        params['url'] = file['url']
+        file_url = file['url']
+        if self.basepath and file_url.startswith('$BASE'):
+            file_url = file_url.replace('$BASE', self.basepath, 1)
+        params['url'] = file_url
         print("File {}", params['url'])
         params['cql'] = file['cql']
         params['chunk_size'] = file.get('chunk_size') or 1000

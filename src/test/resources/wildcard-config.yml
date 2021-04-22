@@ -1,0 +1,11 @@
+server_uri: bolt://localhost:7687
+admin_user: neo4j
+admin_pass: test
+
+files:
+  - url: s3://mhtestdl/tests/test_*
+    cql: |
+      WITH $dict.rows as rows UNWIND rows as row
+      MERGE (a:Cat {id:row.id})
+      SET a.name=row.name,
+          a.age=row.age

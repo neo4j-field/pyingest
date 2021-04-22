@@ -5,12 +5,13 @@ import datetime
 import sys
 import gzip
 from zipfile import ZipFile
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urlunsplit
 import boto3
 from smart_open import open
 import io
 import pathlib
 import ijson
+import os
 
 config = dict()
 supported_compression_formats = ['gzip', 'zip', 'none']
@@ -41,23 +42,54 @@ class LocalServer(object):
 
         print("{} : Reading file", datetime.datetime.utcnow())
 
-        # If file type is specified, use that.  Else check the extension.  Else, treat as csv
-        type = file.get('type') or 'NA'
-        if type != 'NA':
-            if type == 'csv':
-                self.load_csv(file)
-            elif type == 'json':
-                self.load_json(file)
+        # Wildcard matching logic here
+        #
+        files = []
+        url = file.get('url')
+        if url.endswith('*'):
+            parsed = urlparse(url)
+            scheme = parsed.scheme
+            if scheme == 's3':
+                filenames = []
+                bucketname = parsed.netloc
+                path = parsed.path[1:]
+                basePath=os.path.basename(path)
+                matchPath = basePath[:-1]
+                s3 = boto3.resource('s3')
+                bucket = s3.Bucket(bucketname)
+                for obj in bucket.objects.all():
+                    k=obj.key
+                    keybase=os.path.basename(k)
+                    if keybase.startswith(matchPath):
+                        filenames.append(k)
+                for filename in filenames:
+                    newFile = file.copy()
+                    newurl=urlunsplit((scheme,bucketname,filename,'',''))
+                    newFile['url'] = newurl
+                    files.append(newFile)
             else:
-                print("Error! Can't process file because unknown type", type, "was specified")
+                files = [file]
         else:
-            file_suffixes = pathlib.Path(file['url']).suffixes
-            if '.csv' in file_suffixes:
-                self.load_csv(file)
-            elif '.json' in file_suffixes:
-                self.load_json(file)
+            files = [file]
+
+        for file in files:
+            # If file type is specified, use that.  Else check the extension.  Else, treat as csv
+            type = file.get('type') or 'NA'
+            if type != 'NA':
+                if type == 'csv':
+                    self.load_csv(file)
+                elif type == 'json':
+                    self.load_json(file)
+                else:
+                    print("Error! Can't process file because unknown type", type, "was specified")
             else:
-                self.load_csv(file)
+                file_suffixes = pathlib.Path(file['url']).suffixes
+                if '.csv' in file_suffixes:
+                    self.load_csv(file)
+                elif '.json' in file_suffixes:
+                    self.load_json(file)
+                else:
+                    self.load_csv(file)
 
     # Tells ijson to return decimal number as float.  Otherwise, it wraps them in a Decimal object,
     # which angers the Neo4j driver

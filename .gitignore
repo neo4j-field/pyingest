@@ -147,3 +147,5 @@ cython_debug/
 pems_parquet.zip
 *.parquet
 pems_sorted
+src/.DS_Store
+.DS_Store

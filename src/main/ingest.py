@@ -15,32 +15,25 @@ import ijson
 config = dict()
 supported_compression_formats = ['gzip', 'zip', 'none']
 
-
 class LocalServer(object):
 
     def __init__(self):
         self._driver = GraphDatabase.driver(config['server_uri'],
                                             auth=(config['admin_user'],
                                                   config['admin_pass']))
-        self.db_config={}
-        self.database = config['database'] if 'database' in config else None
-        if self.database is not None:
-            self.db_config['database'] = self.database
-        self.basepath = config['basepath'] if 'basepath' in config else None
 
     def close(self):
         self._driver.close()
 
     def load_file(self, file):
+
         # Set up parameters/defaults
         # Check skip_file first so we can exit early
         skip = file.get('skip_file') or False
         if skip:
-            print("Skipping this file: {}", file['url'])
+            print("Skipping this file: {}".format(file['url']))
             return
-
-        print("{} : Reading file", datetime.datetime.utcnow())
-
+        print_progress('Reading file:', "'" + file['url'] + "'")
         # If file type is specified, use that.  Else check the extension.  Else, treat as csv
         type = file.get('type') or 'NA'
         if type != 'NA':
@@ -59,6 +52,8 @@ class LocalServer(object):
             else:
                 self.load_csv(file)
 
+        print_progress('Completed file:', "'" + file['url'] + "'")
+
     # Tells ijson to return decimal number as float.  Otherwise, it wraps them in a Decimal object,
     # which angers the Neo4j driver
     @staticmethod
@@ -69,7 +64,7 @@ class LocalServer(object):
             yield prefix, event, value
 
     def load_json(self, file):
-        with self._driver.session(**self.db_config) as session:
+        with self._driver.session() as session:
             params = self.get_params(file)
             openfile = file_handle(params['url'], params['compression'])
             # 'item' is a magic word in ijson.  It just means the next-level element of an array
@@ -84,7 +79,7 @@ class LocalServer(object):
                 if row is None:
                     halt = True
                 else:
-                    rec_num = rec_num+1;
+                    rec_num = rec_num+1
                     if rec_num > params['skip_records']:
                         rows.append(row)
                         if len(rows) == params['chunk_size']:
@@ -99,7 +94,7 @@ class LocalServer(object):
                 rows_dict = {'rows': rows}
                 session.run(params['cql'], dict=rows_dict).consume()
 
-        print("{} : Completed file", datetime.datetime.utcnow())
+        # print("{} : Completed file", datetime.datetime.utcnow())
 
     def get_params(self, file):
         params = dict()
@@ -108,19 +103,17 @@ class LocalServer(object):
         if params['compression'] not in supported_compression_formats:
             print("Unsupported compression format: {}", params['compression'])
 
-        file_url = file['url']
-        if self.basepath and file_url.startswith('$BASE'):
-            file_url = file_url.replace('$BASE', self.basepath, 1)
-        params['url'] = file_url
-        print("File {}", params['url'])
+        params['url'] = file['url']
+        # print("File", params['url'])
         params['cql'] = file['cql']
         params['chunk_size'] = file.get('chunk_size') or 1000
         params['field_sep'] = file.get('field_separator') or ','
         return params
 
     def load_csv(self, file):
-        with self._driver.session(**self.db_config) as session:
+        with self._driver.session() as session:
             params = self.get_params(file)
+
             openfile = file_handle(params['url'], params['compression'])
 
             # - The file interfaces should be consistent in Python but they aren't
@@ -140,30 +133,31 @@ class LocalServer(object):
                                      chunksize=params['chunk_size'])
 
             for i, rows in enumerate(row_chunks):
-                print(params['url'], i, datetime.datetime.utcnow(), flush=True)
+                # print(params['url'], i, datetime.datetime.utcnow(), flush=True)
                 # Chunk up the rows to enable additional fastness :-)
                 rows_dict = {'rows': rows.fillna(value="").to_dict('records')}
                 session.run(params['cql'],
                             dict=rows_dict).consume()
 
-        print("{} : Completed file", datetime.datetime.utcnow())
-
     def pre_ingest(self):
         if 'pre_ingest' in config:
             statements = config['pre_ingest']
-
-            with self._driver.session(**self.db_config) as session:
+            print_progress('Starting pre-ingest', '')
+            with self._driver.session() as session:
                 for statement in statements:
+                    print_progress('Running:', statement)
                     session.run(statement)
+            print_progress('Finished pre-ingest', '')
 
     def post_ingest(self):
         if 'post_ingest' in config:
             statements = config['post_ingest']
-
-            with self._driver.session(**self.db_config) as session:
+            print_progress('Starting post-ingest', '')
+            with self._driver.session() as session:
                 for statement in statements:
+                    print_progress('Running:', statement)
                     session.run(statement)
-
+            print_progress('Finished post-ingest', '')
 
 def file_handle(url, compression):
     parsed = urlparse(url)
@@ -182,11 +176,13 @@ def file_handle(url, compression):
         else:
             buffer = io.BytesIO(path.read())
         zf = ZipFile(buffer)
-        filename= zf.infolist()[0].filename
+        filename = zf.infolist()[0].filename
         return zf.open(filename)
     else:
         return open(path)
 
+def print_progress(msg, value=''):
+    print("{:%Y-%m-%d %H:%M:%S}\t{}\t{}".format(datetime.datetime.now(), msg, value))
 
 def get_s3_client():
     return boto3.Session().client('s3')
@@ -195,8 +191,7 @@ def get_s3_client():
 def load_config(configuration):
     global config
     with open(configuration) as config_file:
-        config = yaml.load(config_file)
-
+        config = yaml.load(config_file, yaml.SafeLoader)
 
 def main():
     configuration = sys.argv[1]
@@ -204,11 +199,14 @@ def main():
     server = LocalServer()
     server.pre_ingest()
     file_list = config['files']
+    print_progress("Using Server: ", config['server_uri'])
     for file in file_list:
+        if 'basepath' in config:
+            file['url'] = config['basepath'] + file['url']
         server.load_file(file)
+
     server.post_ingest()
     server.close()
-
 
 if __name__ == "__main__":
     main()

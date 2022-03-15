@@ -195,7 +195,7 @@ def get_s3_client():
 def load_config(configuration):
     global config
     with open(configuration) as config_file:
-        config = yaml.load(config_file)
+        config = yaml.load(config_file, yaml.SafeLoader)
 
 
 def main():

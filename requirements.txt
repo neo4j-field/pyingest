@@ -7,8 +7,8 @@ numpy==1.19.4
 pandas==1.1.4
 python-dateutil==2.8.1
 pytz==2020.4
-PyYAML==5.3.1
+PyYAML==5.4
 s3transfer==0.3.3
 six==1.15.0
 smart-open==4.0.1
-urllib3==1.26.2
+urllib3==1.26.5

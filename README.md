@@ -3,7 +3,7 @@ A script for loading CSV and JSON files into a Neo4j database written in Python3
 * Records are grouped into configurable-sized chunks before ingest
 * For CSV files, we leverage the optimized CSV parsing capabilities of the Pandas library
 * For JSON files, we use a streaming JSON parser (ijson) to avoid reading the entire document into memory
-* Can be configured to run asynchronously to make better use of resources (improves performance greatly)
+* Can be configured to run asynchronously to make better use of resources (improves performance greatly, NOTE: async mod only works for json files for now)
 
 ## Installation
 * You will need to have Python 3 and compatible version of Pip installed.

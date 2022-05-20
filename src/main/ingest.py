@@ -1,5 +1,13 @@
+from functools import wraps
+
+
+try:
+    from neo4j._async.driver import AsyncGraphDatabase as async_db
+except ModuleNotFoundError:
+    print('Error! You should be running neo4j python driver version 5 to use async features')
+
+from neo4j import GraphDatabase as sync_db
 import pandas as pd
-from neo4j import GraphDatabase
 import yaml
 import datetime
 import sys
@@ -12,6 +20,12 @@ import io
 import pathlib
 import ijson
 
+import asyncio
+import platform
+
+if platform.system() == 'Windows':
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+
 config = dict()
 supported_compression_formats = ['gzip', 'zip', 'none']
 
@@ -19,10 +33,13 @@ supported_compression_formats = ['gzip', 'zip', 'none']
 class LocalServer(object):
 
     def __init__(self):
-        self._driver = GraphDatabase.driver(config['server_uri'],
-                                            auth=(config['admin_user'],
-                                                  config['admin_pass']))
-        self.db_config={}
+        self._driver = sync_db.driver(config['server_uri'],
+                                 auth=(config['admin_user'],
+                                       config['admin_pass']))
+
+        self._async_drivers = []
+
+        self.db_config = {}
         self.database = config['database'] if 'database' in config else None
         if self.database is not None:
             self.db_config['database'] = self.database
@@ -31,10 +48,20 @@ class LocalServer(object):
     def close(self):
         self._driver.close()
 
+    def close_async_drivers(self):
+        for driver in self._async_drivers:
+            driver.session(**self.db_config).close()
+            driver.close()
+
     def load_file(self, file):
         # Set up parameters/defaults
         # Check skip_file first so we can exit early
         skip = file.get('skip_file') or False
+        mod = 'async' if file.get('mod') == 'async' else 'sync' if not file.get('mod') or file.get('mod') == 'sync' else None
+        if mod == 'async' and not file.get('thread_count'):
+            print('Error! thread_count should be specified when running with mod async')
+            return
+
         if skip:
             print("Skipping this file: {}", file['url'])
             return
@@ -45,17 +72,35 @@ class LocalServer(object):
         type = file.get('type') or 'NA'
         if type != 'NA':
             if type == 'csv':
+                if mod == 'async':
+                    print('Error! Async mod is only supported for json files for now')
+                    return
+
                 self.load_csv(file)
             elif type == 'json':
-                self.load_json(file)
+                if mod == 'sync':
+                    self.load_json(file)
+                elif mod == 'async':
+                    self.load_json_async(file)
+                else:
+                    print('Error! Wrong mod specified. Should be \'sync\' or \'async\'')
             else:
                 print("Error! Can't process file because unknown type", type, "was specified")
         else:
             file_suffixes = pathlib.Path(file['url']).suffixes
             if '.csv' in file_suffixes:
+                if mod == 'async':
+                    print('Error! Async mod is only supported for json files for now')
+                    return
+
                 self.load_csv(file)
             elif '.json' in file_suffixes:
-                self.load_json(file)
+                if mod == 'sync':
+                    self.load_json(file)
+                elif mod == 'async':
+                    self.load_json_async(file)
+                else:
+                    print('Error! Wrong mod specified. Should be \'sync\' or \'async\'')
             else:
                 self.load_csv(file)
 
@@ -84,7 +129,7 @@ class LocalServer(object):
                 if row is None:
                     halt = True
                 else:
-                    rec_num = rec_num+1;
+                    rec_num = rec_num + 1;
                     if rec_num > params['skip_records']:
                         rows.append(row)
                         if len(rows) == params['chunk_size']:
@@ -101,9 +146,98 @@ class LocalServer(object):
 
         print("{} : Completed file", datetime.datetime.utcnow())
 
+    def load_json_async(self, file):
+        try:
+            params = self.get_params(file)
+            openfile = file_handle(params['url'], params['compression'])
+            # 'item' is a magic word in ijson.  It just means the next-level element of an array
+            items = ijson.common.items(self.ijson_decimal_as_float(ijson.parse(openfile)), 'item')
+            # Next, pool these into array of 'chunksize'
+            halt = False
+            rec_num = 0
+            chunk_num = 0
+            rows = []
+            process_params = []
+            while not halt:
+                row = next(items, None)
+                if row is None:
+                    halt = True
+                else:
+                    rec_num = rec_num + 1;
+
+                    if rec_num > params['skip_records']:
+                        rows.append(row)
+                        if len(rows) == params['chunk_size']:
+                            chunk_num = chunk_num + 1
+                            session_index = (chunk_num - 1) % params['thread_count']
+                            rows_dict = {'rows': rows}
+
+                            print(file['url'], 'chunk: ' + str(chunk_num), 'session: ' + str(session_index), datetime.datetime.utcnow(), flush=True)
+
+                            process_params.append({'session_index': session_index, 'cql': params['cql'],
+                                                   'rows_dict': rows_dict})
+
+                            if session_index == params['thread_count'] - 1:
+                                asyncio.run(self.run_asyncio(process_params), debug=True)
+                                self.close_async_drivers()
+
+                                process_params = []
+
+                            rows = []
+
+            if len(rows) > 0:
+                print(file['url'], chunk_num, datetime.datetime.utcnow(), flush=True)
+                rows_dict = {'rows': rows}
+                self._driver.session(**self.db_config).run(params['cql'], dict=rows_dict).consume()
+
+            for driver in self._async_drivers:
+                driver.session(**self.db_config).close()
+
+            print("{} : Completed file", datetime.datetime.utcnow())
+        except Exception as e:
+            print("Error! " + str(e))
+            self.close_async_drivers()
+
+    async def run_asyncio(self,process_params):
+        tasks = []
+        for p in process_params:
+            tasks.append(asyncio.create_task(self.run_cql(p['session_index'], p['cql'], p['rows_dict'])))
+
+        await asyncio.gather(*tasks)
+
+    async def run_cql_wrapper(self,session_index, cql, dict):
+        max_try_count,i, retry = 10, 0, True
+        while retry and i < max_try_count:
+            try:
+                await self.run_cql(session_index,cql,dict)
+                retry = False
+            except Exception:
+                print('Deadlock occured retrying (Session : %d)' % (session_index))
+                i += 1
+
+    async def run_cql(self, session_index, cql, dict):
+        print('Running session %d' % session_index)
+        driver = async_db.driver(config['server_uri'],
+                                 auth=(config['admin_user'],
+                                       config['admin_pass']))
+        self._async_drivers.append(driver)
+        session = driver.session(**self.db_config)
+
+        tx = await session.begin_transaction()
+        await tx.run(cql,dict=dict)
+        await tx.commit()
+
+        print('Completed session %d' % session_index)
+
+    async def run_cql_tx(self, tx, cql, dict):
+        result = await tx.run(cql, dict=dict)
+        await tx.commit()
+
+    """fix yelling at me error end"""
     def get_params(self, file):
         params = dict()
         params['skip_records'] = file.get('skip_records') or 0
+        params['thread_count'] = file.get('thread_count') or 1
         params['compression'] = file.get('compression') or 'none'
         if params['compression'] not in supported_compression_formats:
             print("Unsupported compression format: {}", params['compression'])
@@ -182,7 +316,7 @@ def file_handle(url, compression):
         else:
             buffer = io.BytesIO(path.read())
         zf = ZipFile(buffer)
-        filename= zf.infolist()[0].filename
+        filename = zf.infolist()[0].filename
         return zf.open(filename)
     else:
         return open(path)

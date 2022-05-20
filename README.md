@@ -3,6 +3,7 @@ A script for loading CSV and JSON files into a Neo4j database written in Python3
 * Records are grouped into configurable-sized chunks before ingest
 * For CSV files, we leverage the optimized CSV parsing capabilities of the Pandas library
 * For JSON files, we use a streaming JSON parser (ijson) to avoid reading the entire document into memory
+* Can be configured to run asynchronously to make better use of resources (improves performance greatly)
 
 ## Installation
 * You will need to have Python 3 and compatible version of Pip installed.
@@ -17,11 +18,11 @@ The config is a YAML file described below
 ## How it works
 * The configuration file is read into memory
 * Any `pre_ingest` cypher statements are run
-* File-based ingests (in the `files` stanza of config) are run 
+* File-based ingests (in the `files` stanza of config) are run
 * Any `post_ingest` cypher statements are run
 * **NB** - All values are read from the source file as strings.  If you need a different type in the database, you should do the appropriate type conversion in the cypher ingest statement.  
 
-## Configuration 
+## Configuration
 The following parameters may be configured:
 * `server_uri`: Address of Neo4j driver (**required**)
 * `admin_user`: Username of Neo4j user (**required**)
@@ -38,6 +39,8 @@ The following parameters may be configured:
 * `compression`: Type of compression used on file (**One of** gzip|zip|none) (**Default**: none)
 * `skip_file`: If true, do not process this file.  (**One of** true|false) (**Default**: false)
 * `skip_records`: Skip specified number of records while ingesting the file.  (**Default**: 0)
+* `mod`: Sync or async. (**One of** sync|async)  (**Default**: sync)
+* `thread_count`: The number of threads the process runs  (**Required if mod is async**)
 
 ## Additional info
 The pyingest script is backed by an Integration Test suite written in Java that leverages the Neo4j test harness.  Please see the javadoc on the `IngestPyIT.java` file for details about how this script is tested.

@@ -178,7 +178,7 @@ class LocalServer(object):
                                                    'rows_dict': rows_dict})
 
                             if session_index == params['thread_count'] - 1:
-                                asyncio.run(self.run_asyncio(process_params), debug=True)
+                                asyncio.run(self.run_asyncio(process_params))
                                 self.close_async_drivers()
 
                                 process_params = []
@@ -201,18 +201,21 @@ class LocalServer(object):
     async def run_asyncio(self,process_params):
         tasks = []
         for p in process_params:
-            tasks.append(asyncio.create_task(self.run_cql(p['session_index'], p['cql'], p['rows_dict'])))
+            tasks.append(asyncio.create_task(self.run_cql_wrapper(p['session_index'], p['cql'], p['rows_dict'])))
 
         await asyncio.gather(*tasks)
 
+    # This function is created to retry when deadlocks occur
+    # However it decreases performance greatly and it seems to be loading the data nevertheless
+    # So I set the retry count to 1 so it actually does not take into considerations deadlocks
     async def run_cql_wrapper(self,session_index, cql, dict):
-        max_try_count,i, retry = 10, 0, True
+        max_try_count,i, retry = 1, 0, True
         while retry and i < max_try_count:
             try:
                 await self.run_cql(session_index,cql,dict)
                 retry = False
             except Exception:
-                print('Deadlock occured retrying (Session : %d)' % (session_index))
+                # print('Deadlock occured retrying (Session : %d)' % (session_index))
                 i += 1
 
     async def run_cql(self, session_index, cql, dict):
@@ -223,6 +226,8 @@ class LocalServer(object):
         self._async_drivers.append(driver)
         session = driver.session(**self.db_config)
 
+        # session.run() throws an Exception, having trouble communicating with neo4j on the 2nd run
+        # couldn't figure out why, this solution works well
         tx = await session.begin_transaction()
         await tx.run(cql,dict=dict)
         await tx.commit()

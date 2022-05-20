@@ -1,0 +1,12 @@
+server_uri: bolt://localhost:7687
+admin_user: neo4j
+admin_pass: cuneyt123
+
+files:
+  - url: PATH_TO_FILE
+    compression: gzip
+    type: json
+    chunk_size: 1000
+    mod: async
+    thread_count: 4
+    cql:

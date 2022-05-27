@@ -13,18 +13,28 @@ class TTLParser():
             return None
 
         try:
-            cols = self.split_and_keep(r' (".*"|<http)',line.strip(),maxsplit=2)
+            cols = self.split_and_keep(r' (".*"|<http|<ftp)',line.strip(),maxsplit=2)
             cols = [col.strip() for col in cols]
 
-            cols2 = self.split_and_keep(r'@[a-z]{2} \.|@[a-z]{2} ;', cols[2])
-            cols[2] = cols2[0]
-            if len(cols2) > 1:
-                cols3 = re.split(r'@[a-z]{2} ', cols2[1])
-                cols.append(cols3[1])
+            if cols[2][0] == '<':
+                cols.append(cols[2][-1])
+                cols[2] = cols[2][1:-3]
+            else:
+                if '^^' in cols[2]:
+                    index = cols[2].index('^^')
+                    cols.append(cols[2][-1])
+                    cols.append(cols[2][index+2:-3])
+                    cols[2] = cols[2][1:index-1]
+                else:
+                    cols2 = self.split_and_keep(r'@[a-z]{2} \.|@[a-z]{2} ;', cols[2])
+                    cols[2] = cols2[0]
+                    if len(cols2) > 1:
+                        cols3 = re.split(r'@[a-z]{2} ', cols2[1])
+                        cols.append(cols3[1])
 
             row = {}
             if new_rec:
-                if len(cols) != 4:
+                if len(cols) != 4 and len(cols) != 5:
                     raise self.InvalidTTLDocument("Error! Invalid TTL Document!")
 
                 subjectPrefix = [prefix for prefix in prefixes if prefix['alias'] in cols[0]]
@@ -45,6 +55,9 @@ class TTLParser():
                 else:
                     row['object'] = self.check_first_and_last_char(cols[2])
 
+                if len(cols) == 5:
+                    row['type'] = self.check_first_and_last_char(cols[4])
+
                 if cols[3] == ';':
                     new_rec = False
                     prev_subject = row['subject']
@@ -53,7 +66,7 @@ class TTLParser():
                 else:
                     raise self.InvalidTTLDocument("Error! Invalid TTL Document!")
             else:
-                if len(cols) != 3:
+                if len(cols) != 3 and len(cols) != 4:
                     raise self.InvalidTTLDocument("Error! Invalid TTL Document!")
 
                 row['subject'] = prev_subject
@@ -69,6 +82,9 @@ class TTLParser():
                     row['object'] = cols[1].replace(objectPrefix[0]['alias'], objectPrefix[0]['prefix'])
                 else:
                     row['object'] = self.check_first_and_last_char(cols[1])
+
+                if len(cols) == 4:
+                    row['type'] = self.check_first_and_last_char(cols[3])
 
                 if cols[2] == ';':
                     new_rec = False

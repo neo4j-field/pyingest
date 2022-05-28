@@ -31,7 +31,10 @@ The following parameters may be configured:
 * `admin_pass`: Password for Neo4j user (**required**)
 * `pre_ingest`: List of cypher statements to be run before the file ingests
 * `post_ingest`: List of cypher statements to be run after the file ingests
+* `mod`: Sync or async. (**One of** sync|async)  (**Default**: sync)
+* `thread_count`: The number of threads the process runs  (**Required if mod is async**)
 * `files`: Describes ingestion of a file - one stanza for each file.  If a file needs to be processed more than once, just use it again in a separate stanza.  Parameters for `files` are discussed below.
+
 ### File ingest parameters
 * `url`: Path to the file (**required**)
 * `cql`: Cypher statement to be run (**required**)
@@ -41,8 +44,6 @@ The following parameters may be configured:
 * `compression`: Type of compression used on file (**One of** gzip|zip|none) (**Default**: none)
 * `skip_file`: If true, do not process this file.  (**One of** true|false) (**Default**: false)
 * `skip_records`: Skip specified number of records while ingesting the file.  (**Default**: 0)
-* `mod`: Sync or async. (**One of** sync|async)  (**Default**: sync)
-* `thread_count`: The number of threads the process runs  (**Required if mod is async**)
 
 ## Additional info
 The pyingest script is backed by an Integration Test suite written in Java that leverages the Neo4j test harness.  Please see the javadoc on the `IngestPyIT.java` file for details about how this script is tested.

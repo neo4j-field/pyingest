@@ -244,7 +244,6 @@ class LocalServer(object):
 
                             if session_index == config['thread_count'] - 1:
                                 asyncio.run(self.run_asyncio(process_params))
-                                self.close_async_drivers()
 
                                 process_params = []
 
@@ -385,9 +384,12 @@ class LocalServer(object):
                 await self.run_cql(session_index, cql, dict)
                 retry = False
             except Exception as e:
-                print('Exception occured (Session : %d)' % (session_index))
-                stderr_logger.exception(e)
-                i += 1
+                if hasattr(e,'code') and e.code == 'Neo.TransientError.Transaction.DeadlockDetected':
+                    print('Deadlock detected! Session: %s' % session_index)
+                else:
+                    print('Exception occured (Session : %d)' % (session_index))
+                    stderr_logger.exception(e)
+                    i += 1
 
     async def run_cql(self, session_index, cql, dict):
         print('Running session %d' % session_index)

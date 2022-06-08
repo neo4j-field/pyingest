@@ -30,7 +30,7 @@ if platform.system() == 'Windows':
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 config = dict()
-supported_compression_formats = ['gzip', 'zip', 'none']
+supported_compression_formats = ['gzip', 'zip', 'bz2', 'none']
 
 class StreamToLogger(object):
     """
@@ -84,11 +84,9 @@ class LocalServer(object):
                                       auth=(config['admin_user'],
                                             config['admin_pass']))
 
-        self._async_drivers = []
-        # for i in range(int(config['thread_count'])):
-            # self._async_drivers.append(async_db.driver(config['server_uri'],
-            #                               auth=(config['admin_user'],
-            #                                     config['admin_pass'])))
+        self._async_driver = async_db.driver(config['server_uri'],
+                                      auth=(config['admin_user'],
+                                            config['admin_pass']))
 
         self.db_config = {}
         self.database = config['database'] if 'database' in config else None
@@ -98,12 +96,9 @@ class LocalServer(object):
 
     def close(self):
         self._driver.close()
+        self._async_driver.close()
 
-    def close_async_drivers(self):
-        for driver in self._async_drivers:
-            driver.close()
-
-    def load_file(self, file):
+    async def load_file(self, file):
         # Set up parameters/defaults
         # Check skip_file first so we can exit early
         skip = file.get('skip_file') or False
@@ -131,14 +126,14 @@ class LocalServer(object):
                 if mod == 'sync':
                     self.load_json(file)
                 elif mod == 'async':
-                    self.load_json_async(file)
+                    await self.load_json_async(file)
                 else:
                     print('Error! Wrong mod specified. Should be \'sync\' or \'async\'')
             elif type == 'ttl':
                 if mod == 'sync':
                     self.load_ttl(file)
                 elif mod == 'async':
-                    self.load_ttl_async(file)
+                    await self.load_ttl_async(file)
                 else:
                     print('Error! Wrong mod specified. Should be \'sync\' or \'async\'')
             else:
@@ -155,14 +150,14 @@ class LocalServer(object):
                 if mod == 'sync':
                     self.load_json(file)
                 elif mod == 'async':
-                    self.load_json_async(file)
+                    await self.load_json_async(file)
                 else:
                     print('Error! Wrong mod specified. Should be \'sync\' or \'async\'')
             elif type == 'ttl':
                 if mod == 'sync':
                     self.load_ttl(file)
                 elif mod == 'async':
-                    self.load_ttl_async(file)
+                    await self.load_ttl_async(file)
                 else:
                     print('Error! Wrong mod specified. Should be \'sync\' or \'async\'')
             else:
@@ -202,6 +197,8 @@ class LocalServer(object):
                             rows_dict = {'rows': rows}
                             session.run(params['cql'], dict=rows_dict).consume()
                             rows = []
+                    elif rec_num % 1000 == 0:
+                        print('Skipping record %d ' % (rec_num))
 
             if len(rows) > 0:
                 print(file['url'], chunk_num, datetime.datetime.utcnow(), flush=True)
@@ -210,7 +207,7 @@ class LocalServer(object):
 
         print("{} : Completed file", datetime.datetime.utcnow())
 
-    def load_json_async(self, file):
+    async def load_json_async(self, file):
         try:
             params = self.get_params(file)
             openfile = file_handle(params['url'], params['compression'])
@@ -243,24 +240,33 @@ class LocalServer(object):
                                                    'rows_dict': rows_dict})
 
                             if session_index == config['thread_count'] - 1:
-                                asyncio.run(self.run_asyncio(process_params))
+                                tasks = []
+                                for p in process_params:
+                                    tasks.append(asyncio.create_task(
+                                        self.run_cql_wrapper(p['session_index'], p['cql'], p['rows_dict'])))
+
+                                await asyncio.gather(*tasks)
 
                                 process_params = []
 
                             rows = []
+                    elif rec_num % 1000 == 0:
+                        print('Skipping record %d ' % (rec_num))
 
             if len(rows) > 0:
                 print(file['url'], chunk_num, datetime.datetime.utcnow(), flush=True)
                 rows_dict = {'rows': rows}
                 self._driver.session(**self.db_config).run(params['cql'], dict=rows_dict).consume()
 
-            for driver in self._async_drivers:
-                driver.session(**self.db_config).close()
+
+            self._driver.session(**self.db_config).close()
+            self._async_driver.session(**self.db_config).close()
+            self.close()
 
             print("{} : Completed file", datetime.datetime.utcnow())
         except Exception as e:
             print("Error! " + str(e))
-            self.close_async_drivers()
+            stderr_logger.exception(e)
 
 
 
@@ -284,12 +290,14 @@ class LocalServer(object):
                 else:
                     rec_num = rec_num + len(rows)
                     chunk_num = chunk_num + 1
-                    if params['skip_chunks'] < chunk_num:
+                    if params['skip_chunks'] < chunk_num and params['skip_records'] < rec_num:
                         print(file['url'], chunk_num, datetime.datetime.utcnow(), flush=True)
                         chunk_num = chunk_num + 1
                         rows_dict = {'rows': rows}
                         session.run(params['cql'], dict=rows_dict).consume()
                         rows = []
+                    elif rec_num % 1000 == 0:
+                        print('Skipping record %d ' % (rec_num))
 
 
             if len(rows) > 0:
@@ -299,7 +307,7 @@ class LocalServer(object):
 
         print("{} : Completed file", datetime.datetime.utcnow())
 
-    def load_ttl_async(self, file):
+    async def load_ttl_async(self, file):
         try:
             params = self.get_params(file)
             openfile = file_handle(params['url'], params['compression'])
@@ -345,34 +353,33 @@ class LocalServer(object):
                                                'rows_dict': rows_dict})
 
                         if session_index == config['thread_count'] - 1:
-                            asyncio.run(self.run_asyncio(process_params))
+                            tasks = []
+                            for p in process_params:
+                                tasks.append(asyncio.create_task(
+                                    self.run_cql_wrapper(p['session_index'], p['cql'], p['rows_dict'])))
+
+                            await asyncio.gather(*tasks)
 
                             process_params = []
 
                         rows = []
-                    elif chunk_num % 100 == 0:
-                        print('Skipping chunk %d ' % (chunk_num))
+                    elif rec_num % 1000 == 0:
+                        print('Skipping record %d ' % (rec_num))
 
             if len(rows) > 0:
                 print(file['url'], chunk_num, datetime.datetime.utcnow(), flush=True)
                 rows_dict = {'rows': rows}
                 self._driver.session(**self.db_config).run(params['cql'], dict=rows_dict).consume()
 
-            for driver in self._async_drivers:
-                driver.session(**self.db_config).close()
+            self._driver.session(**self.db_config).close()
+            self._async_driver.session(**self.db_config).close()
+            self.close()
 
             print("{} : Completed file", datetime.datetime.utcnow())
         except Exception as e:
             print("Error! " + str(e))
             stderr_logger.exception(e)
-            self.close_async_drivers()
 
-    async def run_asyncio(self, process_params):
-        tasks = []
-        for p in process_params:
-            tasks.append(asyncio.create_task(self.run_cql_wrapper(p['session_index'], p['cql'], p['rows_dict'])))
-
-        await asyncio.gather(*tasks)
 
     # This function is created to retry when deadlocks occur
     # However it decreases performance greatly and it seems to be loading the data nevertheless
@@ -391,14 +398,11 @@ class LocalServer(object):
                     stderr_logger.exception(e)
                     i += 1
 
+
     async def run_cql(self, session_index, cql, dict):
         print('Running session %d' % session_index)
-        driver = async_db.driver(config['server_uri'],
-                                 auth=(config['admin_user'],
-                                       config['admin_pass']))
-        self._async_drivers.append(driver)
 
-        session = driver.session(**self.db_config)
+        session = self._async_driver.session(**self.db_config)
 
         # session.run() throws an Exception, having trouble communicating with neo4j on the 2nd run
         # couldn't figure out why, this solution works well
@@ -407,7 +411,6 @@ class LocalServer(object):
         await tx.commit()
 
         await session.close()
-        await driver.close()
 
         print('Completed session %d' % session_index)
 
@@ -517,18 +520,17 @@ def load_config(configuration):
     with open(configuration) as config_file:
         config = yaml.load(config_file, yaml.SafeLoader)
 
-
-def main():
+async def main():
     configuration = sys.argv[1]
     load_config(configuration)
     server = LocalServer()
     server.pre_ingest()
     file_list = config['files']
     for file in file_list:
-        server.load_file(file)
+        await server.load_file(file)
     server.post_ingest()
     server.close()
 
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())

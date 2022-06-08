@@ -19,12 +19,13 @@ class TTLParser():
             if cols[2][0] == '<':
                 cols.append(cols[2][-1])
                 cols[2] = cols[2][1:-3]
-            else:
-                if '^^' in cols[2]:
-                    index = cols[2].index('^^')
+            elif cols[2][0] == '"':
+                index = [s.start() for s in re.finditer('"', cols[2])][1]
+                if '^^' in cols[2][index+1:]:
+                    index2 = cols[2].index('^^')
                     cols.append(cols[2][-1])
-                    cols.append(cols[2][index+2:-3])
-                    cols[2] = cols[2][1:index-1]
+                    cols.append(cols[2][index2+2:-3])
+                    cols[2] = cols[2][1:index2-1]
                 else:
                     cols2 = self.split_and_keep(r'@[a-z]{2} \.|@[a-z]{2} ;', cols[2])
                     cols[2] = cols2[0]
@@ -109,6 +110,7 @@ class TTLParser():
 
     def read_prefixes(self,file):
         prefixes = []
+
         self.line = file.readline()
         while len(self.line) != 0:
             if self.line == '\n':
@@ -121,7 +123,6 @@ class TTLParser():
                 break
 
             prefixes.append(prefix)
-
             self.line = file.readline()
 
         return prefixes
@@ -161,3 +162,4 @@ class TTLParser():
 
 
         return str
+

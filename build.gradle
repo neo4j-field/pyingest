@@ -6,26 +6,22 @@ plugins {
 group 'org.mholford'
 version '1.0-SNAPSHOT'
 
-sourceCompatibility = 11
+sourceCompatibility = 17
 
 repositories {
     mavenCentral()
-    maven {
-        name = "neo4j-enterprise"
-        url= "https://neo4j.bintray.com/enterprise"
-    }
 }
 
 dependencies {
-    testCompile group: 'junit', name: 'junit', version: '4.12'
-    testCompile 'com.neo4j.test:neo4j-harness-enterprise:4.2.1'
-    testCompile 'org.apache.commons:commons-text:1.1'
-    testCompile group: 'commons-io', name: 'commons-io', version: '2.6'
-    testCompile 'org.neo4j.driver:neo4j-java-driver:+'
-    testCompile 'com.google.guava:guava:+'
-    testCompile 'com.fasterxml.jackson.core:jackson-core:+'
-    testCompile 'com.fasterxml.jackson.dataformat:jackson-dataformat-yaml:+'
-    testCompile 'com.neo4j:neo4j-enterprise:4.2.1'
+    testImplementation group: 'junit', name: 'junit', version: '4.12'
+    testImplementation group: 'org.neo4j.test', name: 'neo4j-harness', version: '5.12.0'
+    testImplementation 'org.apache.commons:commons-text:1.1'
+    testImplementation group: 'commons-io', name: 'commons-io', version: '2.6'
+    testImplementation 'org.neo4j.driver:neo4j-java-driver:+'
+    testImplementation 'com.google.guava:guava:+'
+    testImplementation 'com.fasterxml.jackson.core:jackson-core:+'
+    testImplementation 'com.fasterxml.jackson.dataformat:jackson-dataformat-yaml:+'
+    testImplementation group: 'org.neo4j', name: 'neo4j', version: '5.12.0'
 }
 
 

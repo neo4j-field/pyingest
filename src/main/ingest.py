@@ -134,7 +134,7 @@ class LocalServer(object):
             header = header.strip().split(params['field_sep'])
 
             # Pandas' read_csv method is highly optimized and fast :-)
-            row_chunks = pd.read_csv(openfile, dtype=str, sep=params['field_sep'], error_bad_lines=False,
+            row_chunks = pd.read_csv(openfile, dtype=str, sep=params['field_sep'], on_bad_lines='warn',
                                      index_col=False, skiprows=params['skip_records'], names=header,
                                      low_memory=False, engine='c', compression='infer', header=None,
                                      chunksize=params['chunk_size'])
